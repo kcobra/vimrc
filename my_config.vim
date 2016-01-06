@@ -11,3 +11,4 @@ set fileencodings=utf-8,gb2312,gbk,gb18030
 set termencoding=gbk,gb18030
 cnoreabbrev csa cs add
 cnoreabbrev csf cs find 
+autocmd! FileType c,cpp,java,php call CSyntaxAfter()

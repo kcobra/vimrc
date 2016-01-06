@@ -19,9 +19,9 @@ function! go#rename#Rename(...)
         return 
     endif
 
-    let fname = resolve(expand('%:p:t'))
+    let fname = expand('%:p:t')
     let pos = s:getpos(line('.'), col('.'))
-    let cmd = printf('%s -offset %s -to %s', shellescape(bin_path), shellescape(printf('%s:#%d', fname, pos)), shellescape(to))
+    let cmd = printf('%s -offset %s:#%d -to %s',  bin_path, shellescape(fname), pos, to)
 
     let out = go#tool#ExecuteInDir(cmd)
 

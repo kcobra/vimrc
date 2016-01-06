@@ -3,27 +3,24 @@
 "
 "  Part of this plugin was taken directly from the oracle repo, however it's
 "  massively changed for a better integration into vim-go. Thanks Alan Donovan
-"  for the first iteration based on quickfix!  - Fatih Arslan
+"  for the first iteration based on quickfix!  - fatih arslan
+"
 "
 
 if !exists("g:go_oracle_bin")
     let g:go_oracle_bin = "oracle"
 endif
 
-" Parses (via regex) Oracle's 'plain' format output and puts them into a
-" quickfix list.
 func! s:qflist(output)
     let qflist = []
     " Parse GNU-style 'file:line.col-line.col: message' format.
     let mx = '^\(\a:[\\/][^:]\+\|[^:]\+\):\(\d\+\):\(\d\+\):\(.*\)$'
     for line in split(a:output, "\n")
         let ml = matchlist(line, mx)
-
         " Ignore non-match lines or warnings
         if ml == [] || ml[4] =~ '^ warning:'
             continue
         endif
-
         let item = {
                     \  'filename': ml[1],
                     \  'text': ml[4],
@@ -40,31 +37,6 @@ func! s:qflist(output)
     cwindow
 endfun
 
-" This uses Vim's errorformat to parse the output from Oracle's 'plain output
-" and put it into quickfix list. I believe using errorformat is much more
-" easier to use. If we need more power we can always switch back to parse it
-" via regex.
-func! s:qflistSecond(output)
-    " backup users errorformat, will be restored once we are finished
-	let old_errorformat = &errorformat
-
-    " match two possible styles of errorformats:
-    "
-    "   'file:line.col-line2.col2: message'
-    "   'file:line:col: message'
-    "
-    " We discard line2 and col2 for the first errorformat, because it's not
-    " useful and quickfix only has the ability to show one line and column
-    " number
-	let &errorformat = "%f:%l.%c-%[%^:]%#:\ %m,%f:%l:%c:\ %m"
-
-    " create the quickfix list and open it
-    cgetexpr split(a:output, "\n")
-    cwindow
-
-	let &errorformat = old_errorformat
-endfun
-
 func! s:getpos(l, c)
     if &encoding != 'utf-8'
         let buf = a:l == 1 ? '' : (join(getline(1, a:l-1), "\n") . "\n")
@@ -79,21 +51,16 @@ func! s:RunOracle(mode, selected) range abort
     let dname = expand('%:p:h')
     let pkg = go#package#ImportPath(dname)
 
-    if exists('g:go_oracle_scope')
-        " let the user defines the scope, must be a space separated string,
-        " example: 'fmt math net/http'
-        let unescaped_scopes = split(get(g:, 'go_oracle_scope'))
-        let scopes = []
-        for unescaped_scope in unescaped_scopes
-          call add(scopes, shellescape(unescaped_scope))
-        endfor
+    if exists('g:go_oracle_scope_file')
+        " let the user defines the scope
+        let sname = shellescape(get(g:, 'go_oracle_scope_file'))
     elseif exists('g:go_oracle_include_tests') && pkg != -1
         " give import path so it includes all _test.go files too
-        let scopes = [shellescape(pkg)]
+        let sname = shellescape(pkg)
     else
         " best usable way, only pass the package itself, without the test
         " files
-        let scopes = go#tool#Files()
+        let sname = join(go#tool#Files(), ' ')
     endif
 
     "return with a warning if the bin doesn't exist
@@ -105,23 +72,15 @@ func! s:RunOracle(mode, selected) range abort
     if a:selected != -1
         let pos1 = s:getpos(line("'<"), col("'<"))
         let pos2 = s:getpos(line("'>"), col("'>"))
-        let cmd = printf('%s -format plain -pos=%s:#%d,#%d %s',
+        let cmd = printf('%s -format json -pos=%s:#%d,#%d %s %s',
                     \  bin_path,
-                    \  shellescape(fname), pos1, pos2, a:mode)
+                    \  shellescape(fname), pos1, pos2, a:mode, sname)
     else
         let pos = s:getpos(line('.'), col('.'))
-        let cmd = printf('%s -format plain -pos=%s:#%d %s',
+        let cmd = printf('%s -format json -pos=%s:#%d %s %s',
                     \  bin_path,
-                    \  shellescape(fname), pos, a:mode)
+                    \  shellescape(fname), pos, a:mode, sname)
     endif
-
-    " now append each scope to the end as Oracle's scope parameter. It can be
-    " a packages or go files, dependent on the User's own choice. For more
-    " info check Oracle's User Manual section about scopes:
-    " https://docs.google.com/document/d/1SLk36YRjjMgKqe490mSRzOPYEDe0Y_WQNRv-EiFYUyw/view#heading=h.nwso96pj07q8
-    for scope in scopes
-      let cmd .= ' ' . scope
-    endfor
 
     echon "vim-go: " | echohl Identifier | echon "analysing ..." | echohl None
 
@@ -130,87 +89,136 @@ func! s:RunOracle(mode, selected) range abort
         " unfortunaly oracle outputs a very long stack trace that is not
         " parsable to show the real error. But the main issue is usually the
         " package which doesn't build. 
+        " echo out
+        " redraw | echon 'vim-go: could not run static analyser (does it build?)'
         redraw | echon "vim-go: " | echohl Statement | echon out | echohl None
-        return ""
+        return {}
     else
-
-    return out
+        let json_decoded = webapi#json#decode(out)
+        return json_decoded
+    endif
 endfun
 
 
 " Show 'implements' relation for selected package
 function! go#oracle#Implements(selected)
     let out = s:RunOracle('implements', a:selected)
-    call s:qflistSecond(out)
+    if empty(out)
+        return
+    endif
+
+    " be sure they exists before we retrieve them from the map
+    if !has_key(out, "implements")
+        return
+    endif
+
+    if has_key(out.implements, "from")
+        let interfaces = out.implements.from
+    elseif has_key(out.implements, "fromptr")
+        let interfaces = out.implements.fromptr
+    else
+        redraw | echon "vim-go: " | echon "does not satisfy any interface"| echohl None
+        return
+    endif
+
+    " get the type name from the type under the cursor
+    let typeName = out.implements.type.name
+
+    " prepare the title
+    let title = typeName . " implements:"
+
+    " start to populate our buffer content
+    let result  = [title, ""]
+
+    for interface in interfaces
+        " don't add runtime interfaces
+        if interface.name !~ '^runtime'
+            let line = interface.name . "\t" . interface.pos
+            call add(result, line)
+        endif
+    endfor
+
+    " open a window and put the result
+    call go#ui#OpenWindow(result)
+
+    " define some buffer related mappings:
+    "
+    " go to definition when hit enter
+    nnoremap <buffer> <CR> :<C-u>call go#ui#OpenDefinition()<CR>
+    " close the window when hit ctrl-c
+    nnoremap <buffer> <c-c> :<C-u>call go#ui#CloseWindow()<CR>
 endfunction
 
 " Describe selected syntax: definition, methods, etc
 function! go#oracle#Describe(selected)
     let out = s:RunOracle('describe', a:selected)
-    call s:qflistSecond(out)
+    if empty(out)
+        return
+    endif
+
+    echo out
+    return
+
+    let detail = out["describe"]["detail"]
+    let desc = out["describe"]["desc"]
+
+    echo '# detail: '. detail
+    " package, constant, variable, type, function or statement labe
+    if detail == "package"
+        echo desc
+        return
+    endif
+
+    if detail == "value"
+        echo desc
+        echo out["describe"]["value"]
+        return
+    endif
+
+    " the rest needs to be implemented
+    echo desc
 endfunction
 
 " Show possible targets of selected function call
 function! go#oracle#Callees(selected)
     let out = s:RunOracle('callees', a:selected)
-    call s:qflistSecond(out)
+    echo out
 endfunction
 
 " Show possible callers of selected function
 function! go#oracle#Callers(selected)
     let out = s:RunOracle('callers', a:selected)
-    call s:qflistSecond(out)
+    echo out
 endfunction
 
 " Show the callgraph of the current program.
 function! go#oracle#Callgraph(selected)
     let out = s:RunOracle('callgraph', a:selected)
-    call s:qflistSecond(out)
+    echo out
 endfunction
 
 " Show path from callgraph root to selected function
 function! go#oracle#Callstack(selected)
     let out = s:RunOracle('callstack', a:selected)
-    call s:qflistSecond(out)
+    echo out
 endfunction
 
 " Show free variables of selection
 function! go#oracle#Freevars(selected)
     let out = s:RunOracle('freevars', a:selected)
-    call s:qflistSecond(out)
+    echo out
 endfunction
 
 " Show send/receive corresponding to selected channel op
-function! go#oracle#ChannelPeers(selected)
+function! go#oracle#Peers(selected)
     let out = s:RunOracle('peers', a:selected)
-    call s:qflistSecond(out)
+    echo out
 endfunction
 
 " Show all refs to entity denoted by selected identifier
 function! go#oracle#Referrers(selected)
     let out = s:RunOracle('referrers', a:selected)
-
-    " append line contents from Go source file for some messages:
-    " '...: referenced here'
-    " '...: reference to NAME'
-    let lines = split(out, "\n")
-    let extlines = []
-    for line in lines
-        if line =~# '\v: referenced here$|: reference to [^ :]*$'
-            let parts = split(line, ':')
-            " Note: we count -3 from end, to support additional comma in
-            " Windows-style C:\... paths
-            let filename = join(parts[0:-3], ':')
-            let linenum = parts[-2]
-            let extline = line . ': ' . readfile(filename, '', linenum)[linenum-1]
-            call add(extlines, extline)
-        else
-            call add(extlines, line)
-        endif
-    endfor
-    let out = join(extlines, "\n")
-
-    call s:qflistSecond(out)
+    echo out
 endfunction
 
 " vim:ts=4:sw=4:et

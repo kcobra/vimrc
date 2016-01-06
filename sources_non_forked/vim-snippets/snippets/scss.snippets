@@ -18,14 +18,8 @@ snippet if
 	@if ${1:condition} {
 		${0}
 	}
-snippet ife
-	@if ${1:condition} {
-		${2}
-	} @else {
-		${0}
-	}
-snippet eif
-	@else if ${1:condition} {
+snippet else
+	@else ${1:condition} {
 		${0}
 	}
 snippet for

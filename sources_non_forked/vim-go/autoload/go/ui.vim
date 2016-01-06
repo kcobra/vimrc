@@ -1,11 +1,11 @@
 let s:buf_nr = -1
 
 "OpenWindow opens a new scratch window and put's the content into the window
-function! go#ui#OpenWindow(title, content)
+function! go#ui#OpenWindow(content)
     " reuse existing buffer window if it exists otherwise create a new one
     if !bufexists(s:buf_nr)
         execute 'botright new'
-        file `="[" . a:title . "]"`
+        file `="[Implements]"`
         let s:buf_nr = bufnr('%')
     elseif bufwinnr(s:buf_nr) == -1
         execute 'botright new'
@@ -17,9 +17,9 @@ function! go#ui#OpenWindow(title, content)
 
     " Keep minimum height to 10, if there is more just increase it that it
     " occupies all results
-    let buffer_height = 10
-    if len(a:content) < buffer_height
-        exe 'resize ' . buffer_height
+    let implements_height = 10
+    if len(a:content) < implements_height
+        exe 'resize ' . implements_height
     else
         exe 'resize ' . len(a:content)
     endif
@@ -58,11 +58,11 @@ endfunction
 
 " OpenDefinition parses the current line and jumps to it by openening a new
 " tab
-function! go#ui#OpenDefinition(filter)
+function! go#ui#OpenDefinition()
     let curline = getline('.')
 
-    " don't touch our first line or any blank line
-    if curline =~ a:filter || curline =~ "^$"
+    " don't touch our first line and any blank line
+    if curline =~ "implements" || curline =~ "^$"
         " supress information about calling this function
         echo "" 
         return

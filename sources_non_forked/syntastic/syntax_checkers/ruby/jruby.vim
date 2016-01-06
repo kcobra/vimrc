@@ -20,8 +20,8 @@ set cpo&vim
 
 function! SyntaxCheckers_ruby_jruby_GetLocList() dict
     let makeprg = self.makeprgBuild({
-        \ 'args': (syntastic#util#isRunningWindows() ? '-T1 -W1' : '-W1'),
-        \ 'args_after': '-c' })
+        \ 'args': (syntastic#util#isRunningWindows() ? '-T1' : ''),
+        \ 'args_after': '-W1 -c' })
 
     let errorformat =
         \ '%-GSyntax OK for %f,'.
@@ -47,4 +47,4 @@ call g:SyntasticRegistry.CreateAndRegisterChecker({
 let &cpo = s:save_cpo
 unlet s:save_cpo
 
-" vim: set sw=4 sts=4 et fdm=marker:
+" vim: set et sts=4 sw=4:

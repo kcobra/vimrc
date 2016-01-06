@@ -35,7 +35,7 @@ function! SyntaxCheckers_elixir_elixir_GetLocList() dict
 
     let make_options = {}
     let compile_command = 'elixir'
-    let mix_file = syntastic#util#findInParent('mix.exs', expand('%:p:h', 1))
+    let mix_file = syntastic#util#findInParent('mix.exs', expand('%:p:h'))
 
     if filereadable(mix_file)
         let compile_command = 'mix compile'
@@ -44,9 +44,7 @@ function! SyntaxCheckers_elixir_elixir_GetLocList() dict
 
     let make_options['makeprg'] = self.makeprgBuild({ 'exe': compile_command })
 
-    let make_options['errorformat'] =
-        \ '%E** %*[^\ ] %f:%l: %m,' .
-        \ '%W%f:%l: warning: %m'
+    let make_options['errorformat'] = '** %*[^\ ] %f:%l: %m'
 
     return SyntasticMake(make_options)
 endfunction
@@ -58,4 +56,4 @@ call g:SyntasticRegistry.CreateAndRegisterChecker({
 let &cpo = s:save_cpo
 unlet s:save_cpo
 
-" vim: set sw=4 sts=4 et fdm=marker:
+" vim: set et sts=4 sw=4:

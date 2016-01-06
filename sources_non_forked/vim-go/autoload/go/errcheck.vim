@@ -2,24 +2,13 @@ if !exists("g:go_errcheck_bin")
     let g:go_errcheck_bin = "errcheck"
 endif
 
-function! go#errcheck#Run(...) abort
-    if a:0 == 0
-        let package = go#package#ImportPath(expand('%:p:h'))
-        if package == -1
-            echohl Error | echomsg "vim-go: package is not inside GOPATH src" | echohl None
-            return
-        endif
-    else
-        let package = a:1
-    end
-
-    let bin_path = go#tool#BinPath(g:go_errcheck_bin)
-    if empty(bin_path)
-        return
+function! go#errcheck#Run() abort
+    let bin_path = go#tool#BinPath(g:go_errcheck_bin) 
+    if empty(bin_path) 
+        return 
     endif
 
-    echon "vim-go: " | echohl Identifier | echon "errcheck analysing ..." | echohl None
-    let out = system(bin_path . ' ' . package)
+    let out = system(bin_path . ' ' . shellescape(expand('%:p:h')))
     if v:shell_error
         let errors = []
         let mx = '^\(.\{-}\):\(\d\+\):\(\d\+\)\s*\(.*\)'
@@ -27,27 +16,21 @@ function! go#errcheck#Run(...) abort
             let tokens = matchlist(line, mx)
 
             if !empty(tokens)
-                call add(errors, {"filename": expand(DefaultGoPath() . "/src/" . tokens[1]),
+                call add(errors, {"filename": tokens[1],
                             \"lnum": tokens[2],
                             \"col": tokens[3],
                             \"text": tokens[4]})
             endif
         endfor
-
         if empty(errors)
-            echohl Error | echomsg "GoErrCheck returned error" | echohl None
-            echo out
+            % | " Couldn't detect error format, output errors
         endif
-
         if !empty(errors)
-            redraw | echo
             call setqflist(errors, 'r')
         endif
+        echohl Error | echomsg "GoErrCheck returned error" | echohl None
     else
         call setqflist([])
     endif
-
     cwindow
 endfunction
-
-" vim:ts=4:sw=4:et

@@ -1,15 +1,18 @@
 function! go#tool#Files()
-    if IsWin()
-        let command = 'go list -f "{{range $f := .GoFiles}}{{$.Dir}}\{{$f}}{{printf \"\n\"}}{{end}}{{range $f := .CgoFiles}}{{$.Dir}}\{{$f}}{{printf \"\n\"}}{{end}}"'
+    if has ("win32")
+        let command = 'go list -f "{{range $f := .GoFiles}}{{$.Dir}}/{{$f}}{{printf \"\n\"}}{{end}}"'
     else
-        let command = "go list -f '{{range $f := .GoFiles}}{{$.Dir}}/{{$f}}{{printf \"\\n\"}}{{end}}{{range $f := .CgoFiles}}{{$.Dir}}/{{$f}}{{printf \"\\n\"}}{{end}}'"
+        " let command = "go list -f $'{{range $f := .GoFiles}}{{$.Dir}}/{{$f}}\n{{end}}'"
+
+        let command = "go list -f '{{range $f := .GoFiles}}{{$.Dir}}/{{$f}}{{printf \"\\n\"}}{{end}}'"
+
     endif
     let out = go#tool#ExecuteInDir(command)
     return split(out, '\n')
 endfunction
 
 function! go#tool#Deps()
-    if IsWin()
+    if has ("win32")
         let command = 'go list -f "{{range $f := .Deps}}{{$f}}{{printf \"\n\"}}{{end}}"'
     else
         let command = "go list -f $'{{range $f := .Deps}}{{$f}}\n{{end}}'"
@@ -20,7 +23,7 @@ endfunction
 
 function! go#tool#Imports()
     let imports = {}
-    if IsWin()
+    if has ("win32")
         let command = 'go list -f "{{range $f := .Imports}}{{$f}}{{printf \"\n\"}}{{end}}"'
     else
         let command = "go list -f $'{{range $f := .Imports}}{{$f}}\n{{end}}'"
@@ -32,8 +35,7 @@ function! go#tool#Imports()
     endif
 
     for package_path in split(out, '\n')
-        let cmd = "go list -f {{.Name}} " . package_path
-        let package_name = substitute(go#tool#ExecuteInDir(cmd), '\n$', '', '')
+        let package_name = fnamemodify(package_path, ":t")
         let imports[package_name] = package_path
     endfor
 
@@ -43,12 +45,8 @@ endfunction
 function! go#tool#ShowErrors(out)
     let errors = []
     for line in split(a:out, '\n')
-        let fatalerrors = matchlist(line, '^\(fatal error:.*\)$')
         let tokens = matchlist(line, '^\s*\(.\{-}\):\(\d\+\):\s*\(.*\)')
-
-        if !empty(fatalerrors)
-            call add(errors, {"text": fatalerrors[1]})
-        elseif !empty(tokens)
+        if !empty(tokens)
             call add(errors, {"filename" : expand("%:p:h:") . "/" . tokens[1],
                         \"lnum":     tokens[2],
                         \"text":     tokens[3]})
@@ -122,23 +120,19 @@ function! go#tool#BinPath(binpath)
     " append our GOBIN and GOPATH paths and be sure they can be found there...
     " let us search in our GOBIN and GOPATH paths
     let old_path = $PATH
-    let $PATH = $PATH . PathSep() .go_bin_path
+    let $PATH = $PATH . ":" .go_bin_path
 
-    if !executable(basename)
+    if !executable(binpath) 
         echo "vim-go: could not find '" . basename . "'. Run :GoInstallBinaries to fix it."
-        " restore back!
-        let $PATH = old_path
         return ""
     endif
 
-    let $PATH = old_path
-
-    let sep = '/'
-    if IsWin()
-        let sep = '\'
+    " restore back!
+    if go_bin_path
+        let $PATH = old_path
     endif
 
-    return go_bin_path . sep . basename
+    return go_bin_path . '/' . basename
 endfunction
 
 " following two functions are from: https://github.com/mattn/gist-vim 
@@ -146,7 +140,7 @@ endfunction
 function! s:get_browser_command()
     let go_play_browser_command = get(g:, 'go_play_browser_command', '')
     if go_play_browser_command == ''
-        if IsWin()
+        if has('win32') || has('win64')
             let go_play_browser_command = '!start rundll32 url.dll,FileProtocolHandler %URL%'
         elseif has('mac') || has('macunix') || has('gui_macvim') || system('uname') =~? '^darwin'
             let go_play_browser_command = 'open %URL%'
