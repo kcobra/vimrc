@@ -1,6 +1,7 @@
 set nu
 let Tlist_Show_One_File = 1
 let Tlist_Use_Right_Window = 1
+let Tlist_WinWidth = 70
 set mouse=a
 set autoindent
 set cindent
